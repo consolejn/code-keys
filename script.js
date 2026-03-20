@@ -1,5 +1,7 @@
 let gameStartTime = 0;
 let levelStartTime = 0;
+let gameState = "playing"; 
+// "playing" | "failed" | "complete"
 
 let levelStats = [];
 
@@ -218,7 +220,7 @@ function loadLevel(newIndex) {
   attemptsLeft = LEVELS[levelIndex].maxAttempts ?? MAX_ATTEMPTS_DEFAULT;
   locked = false;
 
-  levelStartTime = Date.now();   // start level timer
+  levelStartTime = Date.now();
 
   if (levelLabelEl) levelLabelEl.textContent = LEVELS[levelIndex].name;
 
@@ -233,7 +235,6 @@ function loadLevel(newIndex) {
 }
 
 function finishLevel() {
-
   locked = true;
 
   setStatus("Level complete!", "good");
@@ -255,44 +256,67 @@ function finishLevel() {
   });
 
   setTimeout(() => {
-
     const next = levelIndex + 1;
 
     if (next < LEVELS.length) {
-
       loadLevel(next);
-
     } else {
-
       showResultsScreen();
-
     }
-
   }, 850);
-
 }
 
+/* FAIL SCREEN */
 function failLevel() {
   locked = true;
-  setStatus("Out of attempts — level failed. Press Enter to retry.", "bad");
+  gameState = "failed";
+
+  statusEl.innerHTML = `
+    <div class="resultsCard">
+      <div class="resultsTitle resultsTitle--fail">OUT OF ATTEMPTS</div>
+
+      <button id="retryBtn" class="playAgain retryBtn">
+        Retry Level
+      </button>
+    </div>
+  `;
+
+  statusEl.classList.add("results");
+
+  const retryBtn = document.getElementById("retryBtn");
+  retryBtn.addEventListener("click", () => {
+    statusEl.classList.remove("results");
+    statusEl.textContent = "";
+    gameState = "playing";
+
+    // restart level WITHOUT resetting timer
+      stepIndex = 0;
+      locked = false;
+      attemptsLeft = LEVELS[levelIndex].maxAttempts ?? MAX_ATTEMPTS_DEFAULT;
+
+      updateAttemptsUI();
+      setStatus(`Press "${LEVELS[levelIndex].word[0]}" to begin.`, null);
+
+      renderWord();
+      markTargets();
+      setupSceneForLevel();
+      animateStep();
+  });
 }
 
 /* ---------- Results ---------- */
 function showResultsScreen() {
 
+  gameState = "complete";
   hudEl.style.display = "none";
   hintEl.style.visibility = "hidden";
   keyboardEl.style.display = "none";
 
-  const totalTime = Date.now() - gameStartTime;
+  const totalTime = levelStats.reduce((sum, stat) => sum + stat.time, 0);
 
   let totalAccuracy = 0;
-
-  levelStats.forEach(stat => {
-    totalAccuracy += stat.accuracy;
-  });
-
-totalAccuracy = Math.round(totalAccuracy / levelStats.length);
+  levelStats.forEach(stat => totalAccuracy += stat.accuracy);
+  totalAccuracy = Math.round(totalAccuracy / levelStats.length);
 
   wordEl.innerHTML = "";
 
@@ -303,7 +327,6 @@ totalAccuracy = Math.round(totalAccuracy / levelStats.length);
   `;
 
   levelStats.forEach(stat => {
-
     html += `
       <div class="resultRow">
         <div class="resultLevel">${stat.level}</div>
@@ -311,8 +334,7 @@ totalAccuracy = Math.round(totalAccuracy / levelStats.length);
         <div class="resultStat">Accuracy: ${stat.accuracy}%</div>
       </div>
     `;
-
-});
+  });
 
   html += `
         </div>
@@ -325,16 +347,34 @@ totalAccuracy = Math.round(totalAccuracy / levelStats.length);
           Total Accuracy: ${totalAccuracy}%
         </div>
 
-        <div class="resultsRestart">
-          Press Enter to play again
-        </div>
+        <button id="playAgainBtn" class="playAgain">
+          Play Again<br><span style="font-size:10px; opacity:0.7;">or press Enter</span>
+        </button>
       </div>
   `;
 
   statusEl.innerHTML = html;
   statusEl.classList.add("results");
 
+  const playAgainBtn = document.getElementById("playAgainBtn");
+  playAgainBtn.addEventListener("click", restartGame);
+
   locked = true;
+}
+
+/* ---------- Restart ---------- */
+function restartGame() {
+  hudEl.style.display = "";
+  hintEl.style.visibility = "";
+  keyboardEl.style.display = "";
+
+  statusEl.classList.remove("results");
+  statusEl.textContent = "";
+
+  gameStartTime = Date.now();
+  levelStats = [];
+
+  loadLevel(0);
 }
 
 /* ---------- Input ---------- */
@@ -348,24 +388,36 @@ function handleKey(e) {
 
   if (e.key === "Enter" && locked) {
 
-    hudEl.style.display = "";
-    hintEl.style.visibility = "";
-    keyboardEl.style.display = "";
+    if (gameState === "failed") {
+      statusEl.classList.remove("results");
+      statusEl.textContent = "";
+      gameState = "playing";
 
-    statusEl.classList.remove("results");
-    statusEl.textContent = ""; // Clear results text
+      // restart level WITHOUT resetting timer
+      stepIndex = 0;
+      locked = false;
+      attemptsLeft = LEVELS[levelIndex].maxAttempts ?? MAX_ATTEMPTS_DEFAULT;
 
-    gameStartTime = Date.now();
-    levelStats = [];
+      updateAttemptsUI();
+      setStatus(`Press "${LEVELS[levelIndex].word[0]}" to begin.`, null);
 
-    loadLevel(0);
+      renderWord();
+      markTargets();
+      setupSceneForLevel();
+      animateStep();
+    }
+
+    if (gameState === "complete") {
+      // full restart
+      restartGame();
+    }
 
     return;
   }
 
   if (locked) return;
 
-  if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") return;
+  if (["Shift","Control","Alt","Meta"].includes(e.key)) return;
 
   const target = LEVELS[levelIndex].word;
   const pressed = (e.key.length === 1) ? e.key.toUpperCase() : e.key;
@@ -395,10 +447,9 @@ function handleKey(e) {
   }
 }
 
-/* ---------- Keyboard input ---------- */
+/* ---------- Input listeners ---------- */
 window.addEventListener("keydown", handleKey);
 
-/* ---------- Mouse keyboard support (NEW) ---------- */
 for (const [keyValue, el] of keyEls) {
   el.addEventListener("click", () => {
     handleKey({ key: keyValue });
