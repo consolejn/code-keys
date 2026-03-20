@@ -1,4 +1,4 @@
-# Code Keys
+# Code Keys (DEMO)
 
 Code Keys is a browser-based interactive typing game.
 Each keypress triggers sound effects and visual feedback, with multiple levels, accuracy tracking and a results screen.
